@@ -1,2 +1,4 @@
 ﻿  main.cpp
-  LLGMN.vcxproj -> C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN\Debug\LLGMN.exe
+C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN\main.cpp(71,78): error C2440: '<function-style-cast>': 'initializer list' から 'std::vector<double,std::allocator<double>>' に変換できません。
+C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN\main.cpp(71,78): message : コンストラクターはソース型を持てません、またはコンストラクターのオーバーロードの解決があいまいです。
+C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN\main.cpp(71,43): error C2064: 2 引数を取り込む関数には評価されません。
