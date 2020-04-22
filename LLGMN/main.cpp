@@ -10,19 +10,13 @@ LLGMNの実装
 #include <sstream>
 #include <random>
 #include <cmath>
-
+#include "tdata_class.h"
+#include "function.h"
 
 using namespace std;
 
-//教師データクラス
-class Tdata
-{
-public:
-	vector<double> input;
-	vector<double> output;
-	Tdata(int input_size, int output_size);
-};
 
+//教師データクラスのコンストラクタ
 Tdata::Tdata(int input_size, int output_size)
 {
 	input.resize(input_size, 0);
@@ -30,192 +24,110 @@ Tdata::Tdata(int input_size, int output_size)
 }
 
 
-//関数のプロトタイプ宣言
-//順方向伝播
-void forwardprop(
-	vector<vector<vector<double>>>& weight,		//重み
-	vector<vector<vector<double>>>& In,			//各ニューロンに対する入力
-	vector<vector<vector<double>>>& Out,		//各ニューロンに対する出力
-	vector<double>& input,						//NNへの入力
-	vector<double>& non_linear_input,			//非線形変換後の入力
-	vector<double>& output,		//NNからの出力
-	int input_size,				//入力の個数(次元)
-	int k_class,				//クラス(=出力の個数)
-	int component				//コンポーネント
-);
-
-//学習
-void learning(
-	vector<Tdata> teaching_data,				//教師データ
-	vector<vector<vector<double>>>& weight,		//重み
-	vector<vector<vector<double>>>& In,			//各ニューロンに対する入力
-	vector<vector<vector<vector<double>>>>& Out,//各ニューロンに対する出力
-	vector<vector<double>>& non_linear_input,	//非線形変換後の入力
-	vector<vector<double>>& output,				//NNからの出力
-	int teaching_data_size,		//教師データの数
-	int input_size,				//入力の個数(次元)
-	int k_class,				//クラス(=出力の個数)
-	int component,				//コンポーネント
-	double learning_rate,		//学習率
-	int learning_times,			//最大学習回数
-	double efunc_min			//評価関数の収束判定値
-);
-
-//重みの初期化
-void init_weight(vector<vector<vector<double>>>& weight);
-
-
-
 int main() {
 
+	//変数宣言
+	int teaching_data_size = 0;			//教師データの数
+	const int input_size = 2;			//入力の個数(次元)
+	const int k_class = 4;				//クラス(=出力の個数)
+	const int component = 2;			//コンポーネント
+	const double learning_rate = 0.01;	//学習率
+	const int learning_times = 1000;	//最大学習回数
+	const double efunc_min = 0.001;		//評価関数の収束判定値
+	const int non_linear_input_size = 1 + input_size * (input_size + 3) / 2;	//非線形変換後の入力の個数
+
+	//教師データのデータ数をカウント
+	ifstream ifs("lea_sig.csv");
+	if (!ifs) {
+		printf("教師データファイルを開けませんでした．\n");
+		return 0;
+	}
+	string buf;
+	while (getline(ifs, buf)) {
+		teaching_data_size++;
+	}
+	ifs.close();
+
+	vector<Tdata> teaching_data(teaching_data_size, Tdata(input_size, k_class));	//教師データ
+
+	//教師データファイルオープンおよび読み込み
+	//入力データ
+	ifstream ifs_t_in("lea_sig.csv");
+	if (!ifs_t_in) {
+		printf("教師データファイルを開けませんでした．\n");
+		return 0;
+	}
+	string str;
+	for (int n = 0; getline(ifs_t_in, str); n++) {
+		string tmp;
+		stringstream stream;
+		stream << str;
+		for (int d = 0; getline(stream, tmp, ','); d++) {
+			teaching_data[n].input[d] = atof(tmp.c_str());
+		}
+	}
+
+	//出力データ
+	ifstream ifs_t_out("lea_T_sig.csv");
+	if (!ifs_t_out) {
+		printf("教師データファイルを開けませんでした．\n");
+		return 0;
+	}
+	for (int n = 0; getline(ifs_t_out, str); n++) {
+		string tmp;
+		stringstream stream;
+		stream << str;
+		for (int d = 0; getline(stream, tmp, ','); d++) {
+			teaching_data[n].output[d] = atof(tmp.c_str());
+		}
+	}
+
+
+	/***********************************
+	第1層から第2層へのブランチに対する重み．
+	weight[h][k][m]: 1層目のh-1番目のノードから2層目のクラスk-1，コンポーネントm-1のノードへのブランチに対する重み．
+	各要素数の範囲はそれぞれ，h: 0～non_linear_input_size-1, k: 0～k_class-1，m: 0～component-1．
+	***********************************/
+	vector<vector<vector<double>>> weight(non_linear_input_size, vector<vector<double>>(k_class, vector<double>(component)));
+
+	/***********************************
+	各ノードに対する入力．論文中におけるIに相当．
+	In[l][k][m]:	l-1層目のクラスk-1，コンポーネントm-1のノードへの入力(2層目の場合)．
+					l-1層目のk-1番目のノードへの入力(1,3層目の場合)．m=0の場合のみデータをもつ．
+	l: 0～2, k: 0～max(non_linear_input_size,k_class)-1, m: 0～component-1.
+	***********************************/
+	vector<vector<vector<double>>> In(3, vector<vector<double>>(max(non_linear_input_size, k_class), vector<double>(component)));
+
+	/***********************************
+	各ノードに対する出力．論文中におけるOに相当．
+	Out[n][l][k][m]:	n-1個目の入力データに対する出力．
+						l-1層目のクラスk-1，コンポーネントm-1のノードからの出力(2層目の場合)．
+						l-1層目のk-1番目のノードからの出力(1,3層目の場合)．m=0の場合のみデータをもつ．
+	n: 0～teaching_data_size-1, l: 0～2, k: 0～max(non_linear_input_size,k_class)-1, m: 0～component-1.
+	***********************************/
+	vector<vector<vector<vector<double>>>> Out(teaching_data_size, vector<vector<vector<double>>>(3, vector<vector<double>>(max(non_linear_input_size, k_class), vector<double>(component))));
+
+	/***********************************
+	入力を非線形変換した後のデータ．
+	non_linear_input[n][h]: n-1個目の入力データに対するh-1番目のデータ．
+	n: 0～teaching_data_size-1, h: 0～non_linear_input_size-1.
+	***********************************/
+	vector<vector<double>> non_linear_input(teaching_data_size, vector<double>(non_linear_input_size));
+
+	/***********************************
+	NNからの出力．
+	output[n][k]: n-1個目の入力データに対するk-1番目の出力．
+	n: 0～teaching_data_size-1, k: 0～k_class.
+	***********************************/
+	vector<vector<double>> output(teaching_data_size, vector<double>(k_class));
+
+
+
+	//重みの初期化
+	init_weight(weight);
+
+	//学習
+	learning(teaching_data, weight, In, Out, non_linear_input, output, teaching_data_size, input_size, k_class, component, learning_rate, learning_times, efunc_min);
 
 	return 0;
-}
-
-
-//順方向伝播
-void forwardprop(
-	vector<vector<vector<double>>>& weight,		//重み
-	vector<vector<vector<double>>>& In,			//各ニューロンに対する入力
-	vector<vector<vector<double>>>& Out,		//各ニューロンに対する出力
-	vector<double>& input,						//NNへの入力
-	vector<double>& non_linear_input,			//非線形変換後の入力
-	vector<double>& output,		//NNからの出力
-	int input_size,				//入力の個数(次元)
-	int k_class,				//クラス(=出力の個数)
-	int component				//コンポーネント
-) {
-	int non_linear_input_size = 1 + input_size * (input_size + 3) / 2;	//非線形変換後の入力の個数
-	int count1 = 0, count2 = 0;
-
-	//入力の非線形変換
-	non_linear_input[0] = 1;
-	for (int i = 0; i < input_size; i++) {
-		non_linear_input[i + 1] = input[i];
-	}
-	for (int i = input_size + 1; i < non_linear_input_size; i++) {
-		non_linear_input[i] = input[count1] * input[count2];
-		count1++;
-		if (count1 == input_size) {
-			count2++;
-			count1 = count2;
-		}
-	}
-
-
-	//第1層の伝播
-	for (int i = 0; i < non_linear_input_size; i++) {
-		In[0][i][0] = non_linear_input[i];
-		Out[0][i][0] = In[0][i][0];
-	}
-
-
-	//第2層の伝播
-	for (int h = 0; h < non_linear_input_size; h++) {
-		weight[h][k_class - 1][component - 1] = 0;	//第2層の一番最後のニューロンに対する重みは0とする
-	}
-	
-	//2層目入力の計算
-	for (int k = 0; k < k_class; k++) {
-		for (int m = 0; m < component; m++) {
-			In[1][k][m] = 0;
-			for (int h = 0; h < non_linear_input_size; h++) {
-				In[1][k][m] += Out[0][h][0] * weight[h][k][m];
-			}
-		}
-	}
-
-	//2層目出力の計算
-	double sum = 0;
-	for (int k = 0; k < k_class; k++) {
-		for (int m = 0; m < component; m++) {
-			sum += exp(In[1][k][m]);
-		}
-	}
-	for (int k = 0; k < k_class; k++) {
-		for (int m = 0; m < component; m++) {
-			Out[1][k][m] = exp(In[1][k][m]) / sum;
-		}
-	}
-
-
-	//第3層の伝播
-	for (int k = 0; k < k_class; k++) {
-		In[2][k][0] = 0;
-		for (int m = 0; m < component; m++) {
-			In[2][k][0] += Out[1][k][m];
-		}
-		output[k] = In[2][k][0];
-	}
-}
-
-
-//学習
-void learning(
-	vector<Tdata> teaching_data,				//教師データ
-	vector<vector<vector<double>>>& weight,		//重み
-	vector<vector<vector<double>>>& In,			//各ニューロンに対する入力
-	vector<vector<vector<vector<double>>>>& Out,//各ニューロンに対する出力
-	vector<vector<double>>& non_linear_input,	//非線形変換後の入力
-	vector<vector<double>>& output,				//NNからの出力
-	int teaching_data_size,		//教師データの数
-	int input_size,				//入力の個数(次元)
-	int k_class,				//クラス(=出力の個数)
-	int component,				//コンポーネント
-	double learning_rate,		//学習率
-	int learning_times,			//最大学習回数
-	double efunc_min			//評価関数の収束判定値
-) {
-	int non_linear_input_size = 1 + input_size * (input_size + 3) / 2;	//非線形変換後の入力の個数
-	double evaluation_func;		//評価関数の値
-	double diff_efunc;			//評価関数の微分
-	double delta_weight;		//重みの更新値
-
-	for (int times = 0; times < learning_times; times++) {
-		//各教師データに対して順方向伝播を行い，出力を得る
-		for (int tdata_num = 0; tdata_num < teaching_data_size; tdata_num++) {
-			forwardprop(weight, In, Out[tdata_num], teaching_data[tdata_num].input, non_linear_input[tdata_num], output[tdata_num], input_size, k_class, component);
-		}
-
-		//評価関数の導出
-		evaluation_func = 0;
-		for (int n = 0; n < teaching_data_size; n++) {
-			for (int k = 0; k < k_class; k++) {
-				evaluation_func -= teaching_data[n].output[k] * log10(output[n][k]);
-			}
-		}
-		if (evaluation_func < efunc_min) break;	//収束判定
-
-		//重みの更新(一括学習)
-		for (int h = 0; h < non_linear_input_size; h++) {
-			for (int k = 0; k < k_class; k++) {
-				for (int m = 0; m < component; m++) {
-					delta_weight = 0;
-					for (int n = 0; n < teaching_data_size; n++) {
-						diff_efunc = (output[n][k] - teaching_data[n].output[k]) * Out[n][1][k][m] / output[n][k] * non_linear_input[n][h];
-						delta_weight += diff_efunc;
-					}
-					delta_weight *= -learning_rate;
-					weight[h][k][m] += delta_weight;
-				}
-			}
-		}
-	}
-}
-
-
-//重みの初期化
-void init_weight(vector<vector<vector<double>>>& weight) {
-	random_device rnd;
-	mt19937 mt(rnd());
-	uniform_real_distribution<> rand12(-1.0, 1.0);	//-1～1の範囲の一様乱数
-
-	for (int i = 0; i < (int)(weight.size()); i++) {
-		for (int j = 0; j < (int)(weight[i].size()); j++) {
-			for (int k = 0; k < (int)(weight[i][j].size()); k++) {
-				weight[i][j][k] = rand12(mt);
-				cout << weight[i][j][k] << "\n";
-			}
-		}
-	}
 }
