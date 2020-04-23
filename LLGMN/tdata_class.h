@@ -1,3 +1,5 @@
+//教師データクラスの宣言
+
 #pragma once
 #include <iostream>
 #include <vector>
@@ -13,10 +15,3 @@ public:
 	vector<double> output;		//出力
 	Tdata(int input_size, int output_size);
 };
-
-//コンストラクタ
-Tdata::Tdata(int input_size, int output_size)
-{
-	input.resize(input_size, 0);
-	output.resize(output_size, 0);
-}

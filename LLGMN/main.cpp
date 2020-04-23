@@ -1,6 +1,6 @@
 /****************************************
 LLGMNの実装
-
+main関数部分
 ******************************************/
 
 #include <iostream>
@@ -28,6 +28,7 @@ int main() {
 	int learning_times = 10000;			//最大学習回数
 	double efunc_min = 0.001;			//評価関数の収束判定値
 	int non_linear_input_size;			//非線形変換後の入力の個数
+	int mode;							//一括学習か逐次学習かを選択(BATCH: 一括学習，SEQUENTIAL: 逐次学習)
 
 	//入力次元，クラス数，コンポーネント数，学習率，最大学習回数を入力
 	cout << "入力データの次元数を入力してださい: " ;
@@ -41,6 +42,8 @@ int main() {
 	cout << "最大学習回数を入力してださい: ";
 	cin >> learning_times;
 	non_linear_input_size = 1 + input_size * (input_size + 3) / 2;
+	cout << "学習方法を入力してください．1: 一括学習，2: 逐次学習: ";
+	cin >> mode;
 
 	//教師データのデータ数をカウント
 	string filename_t_in = "lea_sig.csv";
@@ -168,7 +171,7 @@ int main() {
 
 	//学習
 	cout << "教師データを学習しています．" << endl;
-	learning(teaching_data, weight, In, Out, non_linear_input, output, teaching_data_size, input_size, k_class, component, learning_rate, learning_times, efunc_min);
+	learning(teaching_data, weight, In, Out, non_linear_input, output, teaching_data_size, input_size, k_class, component, learning_rate, learning_times, efunc_min, mode);
 
 	//教師データをNNに入力し正しい出力が得られるか確認
 	for (int tdata_num = 0; tdata_num < teaching_data_size; tdata_num++) {
