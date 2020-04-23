@@ -16,28 +16,35 @@ LLGMNの実装
 using namespace std;
 
 
-//教師データクラスのコンストラクタ
-Tdata::Tdata(int input_size, int output_size)
-{
-	input.resize(input_size, 0);
-	output.resize(output_size, 0);
-}
-
-
 int main() {
 
 	//変数宣言
 	int teaching_data_size = 0;			//教師データの数
-	const int input_size = 2;			//入力の個数(次元)
-	const int k_class = 4;				//クラス(=出力の個数)
-	const int component = 2;			//コンポーネント
-	const double learning_rate = 0.01;	//学習率
-	const int learning_times = 1000;	//最大学習回数
-	const double efunc_min = 0.001;		//評価関数の収束判定値
-	const int non_linear_input_size = 1 + input_size * (input_size + 3) / 2;	//非線形変換後の入力の個数
+	int non_teaching_data_size = 0;		//未学習データの数
+	int input_size = 2;					//入力の個数(次元)
+	int k_class = 4;					//クラス(=出力の個数)
+	int component = 2;					//コンポーネント
+	double learning_rate = 0.01;		//学習率
+	int learning_times = 10000;			//最大学習回数
+	double efunc_min = 0.001;			//評価関数の収束判定値
+	int non_linear_input_size;			//非線形変換後の入力の個数
+
+	//入力次元，クラス数，コンポーネント数，学習率，最大学習回数を入力
+	cout << "入力データの次元数を入力してださい: " ;
+	cin >> input_size;
+	cout << "クラス数を入力してださい: ";
+	cin >> k_class;
+	cout << "コンポーネント数を入力してださい: ";
+	cin >> component;
+	cout << "学習率を入力してださい: ";
+	cin >> learning_rate;
+	cout << "最大学習回数を入力してださい: ";
+	cin >> learning_times;
+	non_linear_input_size = 1 + input_size * (input_size + 3) / 2;
 
 	//教師データのデータ数をカウント
-	ifstream ifs("lea_sig.csv");
+	string filename_t_in = "lea_sig.csv";
+	ifstream ifs(filename_t_in);
 	if (!ifs) {
 		printf("教師データファイルを開けませんでした．\n");
 		return 0;
@@ -52,9 +59,9 @@ int main() {
 
 	//教師データファイルオープンおよび読み込み
 	//入力データ
-	ifstream ifs_t_in("lea_sig.csv");
+	ifstream ifs_t_in(filename_t_in);
 	if (!ifs_t_in) {
-		printf("教師データファイルを開けませんでした．\n");
+		printf("教師データファイル(入力)を開けませんでした．\n");
 		return 0;
 	}
 	string str;
@@ -66,11 +73,13 @@ int main() {
 			teaching_data[n].input[d] = atof(tmp.c_str());
 		}
 	}
+	ifs_t_in.close();
 
 	//出力データ
-	ifstream ifs_t_out("lea_T_sig.csv");
+	string filename_t_out = "lea_T_sig.csv";
+	ifstream ifs_t_out(filename_t_out);
 	if (!ifs_t_out) {
-		printf("教師データファイルを開けませんでした．\n");
+		printf("教師データファイル(出力)を開けませんでした．\n");
 		return 0;
 	}
 	for (int n = 0; getline(ifs_t_out, str); n++) {
@@ -81,7 +90,39 @@ int main() {
 			teaching_data[n].output[d] = atof(tmp.c_str());
 		}
 	}
+	ifs_t_out.close();
 
+
+	//未学習データの読み込み
+	//行数カウント
+	string filename_nt_in = "dis_sig.csv";
+	ifstream ifs2(filename_nt_in);
+	if (!ifs2) {
+		printf("未学習データファイルを開けませんでした．\n");
+		return 0;
+	}
+	while (getline(ifs2, buf)) {
+		non_teaching_data_size++;
+	}
+	ifs2.close();
+
+	vector<Tdata> non_teaching_data(non_teaching_data_size, Tdata(input_size, k_class));	//未学習データ
+
+	//読み込み
+	ifstream ifs_nt_in(filename_nt_in);
+	if (!ifs_nt_in) {
+		printf("未学習データファイルを開けませんでした．\n");
+		return 0;
+	}
+	for (int n = 0; getline(ifs_nt_in, str); n++) {
+		string tmp;
+		stringstream stream;
+		stream << str;
+		for (int d = 0; getline(stream, tmp, ','); d++) {
+			non_teaching_data[n].input[d] = atof(tmp.c_str());
+		}
+	}
+	ifs_nt_in.close();
 
 	/***********************************
 	第1層から第2層へのブランチに対する重み．
@@ -122,12 +163,45 @@ int main() {
 	vector<vector<double>> output(teaching_data_size, vector<double>(k_class));
 
 
-
 	//重みの初期化
 	init_weight(weight);
 
 	//学習
+	cout << "教師データを学習しています．" << endl;
 	learning(teaching_data, weight, In, Out, non_linear_input, output, teaching_data_size, input_size, k_class, component, learning_rate, learning_times, efunc_min);
+
+	//教師データをNNに入力し正しい出力が得られるか確認
+	for (int tdata_num = 0; tdata_num < teaching_data_size; tdata_num++) {
+		forwardprop(weight, In, Out[tdata_num], teaching_data[tdata_num].input, non_linear_input[tdata_num], output[tdata_num], input_size, k_class, component);
+	}
+	string filename_t_out2 = "lea_sig_out.csv";
+	ofstream ofs_t(filename_t_out2);
+	for (int n = 0; n < non_teaching_data_size; n++) {
+		for (int k = 0; k < k_class; k++) {
+			ofs_t << output[n][k] << ",";
+		}
+		ofs_t << "\n";
+	}
+	ofs_t.close();
+	cout << "教師データを入力したときの出力データを" << filename_t_out2 << "に保存しました．" << endl;
+
+	//未学習データをNNに入力
+	Out.resize(non_teaching_data_size);
+	for (int ntdata_num = 0; ntdata_num < non_teaching_data_size; ntdata_num++) {
+		forwardprop(weight, In, Out[ntdata_num], non_teaching_data[ntdata_num].input, non_linear_input[ntdata_num], non_teaching_data[ntdata_num].output, input_size, k_class, component);
+	}
+
+	//識別結果をファイルdis_sig_out.csvに出力
+	string filename_nt_out = "dis_sig_out.csv";
+	ofstream ofs(filename_nt_out);
+	for (int n = 0; n < non_teaching_data_size; n++) {
+		for (int k = 0; k < k_class; k++) {
+			ofs << non_teaching_data[n].output[k] << ",";
+		}
+		ofs << "\n";
+	}
+	ofs.close();
+	cout << "未学習データの識別結果を" << filename_nt_out << "に保存しました．" << endl;
 
 	return 0;
 }
