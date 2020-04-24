@@ -128,7 +128,7 @@ void learning(
 			}
 		}
 		evaluation_func = abs(evaluation_func) / teaching_data_size;
-		//if (times % 10 == 0) cout << evaluation_func << endl;
+		if (times % 10 == 0) cout << evaluation_func << endl;
 		if (abs(evaluation_func) < efunc_min) break;	//Žû‘©”»’è
 
 		//d‚Ý‚ÌXV
