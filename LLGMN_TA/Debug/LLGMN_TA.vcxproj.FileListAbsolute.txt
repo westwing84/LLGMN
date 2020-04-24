@@ -1,0 +1,2 @@
+C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN_TA\Debug\LLGMN_TA.exe
+C:\Users\tsuba\Documents\GitHub\LLGMN\LLGMN_TA\Debug\LLGMN_TA.pdb
