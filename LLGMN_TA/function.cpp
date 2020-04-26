@@ -10,6 +10,7 @@ LLGMNのTAの実装
 #include <sstream>
 #include <random>
 #include <cmath>
+#include <time.h>
 #include "tdata_class.h"
 #include "function.h"
 
@@ -106,7 +107,7 @@ void learning(
 	int component,				//コンポーネント
 	int learning_times,			//最大学習回数
 	double efunc_min,			//評価関数の収束判定値
-	double beta,				//TAの定数
+	double beta,				//TAの定数ベータ
 	int mode					//BATCH: 一括学習，SEQUENTIAL: 逐次学習
 ) {
 	int non_linear_input_size = 1 + input_size * (input_size + 3) / 2;	//非線形変換後の入力の個数
@@ -114,12 +115,17 @@ void learning(
 	vector<double> evfunc_init_val(teaching_data_size, 0);		//評価関数の初期値
 	double evfunc_sum = 0;		//評価関数の合計
 	double diff_efunc;			//評価関数の微分
+	vector<double> diff_efunc_sum(teaching_data_size, 0);		//評価関数の微分の合計
 	double delta_weight;		//重みの更新値
 	double learning_rate;		//学習率
-	double gamma;
-
+	double gamma;				//TAの定数ガンマ
+	int sampling_time = 35;		//1回の学習にかかる時間[ms]
+	clock_t start, end;
 
 	for (int times = 0; times < learning_times; times++) {
+		//1回の学習にかかる時間を計測(開始時間を記録)
+		start = clock();
+
 		//各教師データに対して順方向伝播を行い，出力を得る
 		for (int tdata_num = 0; tdata_num < teaching_data_size; tdata_num++) {
 			forwardprop(weight, In, Out[tdata_num], teaching_data[tdata_num].input, non_linear_input[tdata_num], output[tdata_num], input_size, k_class, component);
@@ -130,15 +136,28 @@ void learning(
 		for (int n = 0; n < teaching_data_size; n++) {
 			evaluation_func[n] = 0;
 			for (int k = 0; k < k_class; k++) {
+				if (output[n][k] < 1e-10) output[n][k] = 1e-10;
 				evaluation_func[n] -= teaching_data[n].output[k] * log10(output[n][k]);
 				if (times == 0) evfunc_init_val[n] = evaluation_func[n];	//評価関数の初期値を記録
 			}
 			evfunc_sum += evaluation_func[n];
 		}
 		evfunc_sum = abs(evfunc_sum) / teaching_data_size;
-		if (times % 10 == 0) cout << evfunc_sum << endl;
+		//if (times % 10 == 0) cout << evfunc_sum << endl;
 		if (evfunc_sum < efunc_min) break;	//収束判定
 
+
+		//評価関数の各重みに対する微分の合計を算出
+		for (int h = 0; h < non_linear_input_size; h++) {
+			for (int k = 0; k < k_class; k++) {
+				for (int m = 0; m < component; m++) {
+					for (int n = 0; n < teaching_data_size; n++) {
+						diff_efunc = (output[n][k] - teaching_data[n].output[k]) * Out[n][1][k][m] / output[n][k] * non_linear_input[n][h];
+						diff_efunc_sum[n] += pow(diff_efunc, 2);
+					}
+				}
+			}
+		}
 
 		//重みの更新
 		for (int h = 0; h < non_linear_input_size; h++) {
@@ -148,9 +167,9 @@ void learning(
 						delta_weight = 0;
 						for (int n = 0; n < teaching_data_size; n++) {
 							diff_efunc = (output[n][k] - teaching_data[n].output[k]) * Out[n][1][k][m] / output[n][k] * non_linear_input[n][h];
-							learning_rate = pow(evfunc_init_val[n], 1 - beta) / (learning_times * (1 - beta));
-							gamma = pow(evaluation_func[n], beta) / pow(diff_efunc, 2);
-							delta_weight += learning_rate * gamma * diff_efunc;
+							learning_rate = pow(evfunc_init_val[n], 1 - beta) / (learning_times * ((double)sampling_time / 1000) * (1 - beta));
+							gamma = pow(evaluation_func[n], beta) / diff_efunc_sum[n];
+							delta_weight -= learning_rate * gamma * diff_efunc;
 						}
 						weight[h][k][m] += delta_weight;
 					}
@@ -158,8 +177,8 @@ void learning(
 						for (int n = 0; n < teaching_data_size; n++) {
 							diff_efunc = (output[n][k] - teaching_data[n].output[k]) * Out[n][1][k][m] / output[n][k] * non_linear_input[n][h];
 							delta_weight = diff_efunc;
-							learning_rate = pow(evfunc_init_val[n], 1 - beta) / (times * (1 - beta));
-							gamma = pow(evaluation_func[n], beta) / pow(diff_efunc, 2);
+							learning_rate = pow(evfunc_init_val[n], 1 - beta) / (learning_times * ((double)sampling_time / 1000) * (1 - beta));
+							gamma = pow(evaluation_func[n], beta) / diff_efunc_sum[n];
 							delta_weight *= -learning_rate * gamma;
 							weight[h][k][m] += delta_weight;
 						}
@@ -167,6 +186,8 @@ void learning(
 				}
 			}
 		}
+		end = clock();	//学習の終了時間を記録
+		sampling_time = end - start;
 	}
 }
 
